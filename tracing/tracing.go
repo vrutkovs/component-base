@@ -43,6 +43,20 @@ func Start(ctx context.Context, name string, attributes ...attribute.KeyValue) (
 	}
 }
 
+// StartNewRootSpan create new root span using both OpenTelemetry, and the k8s.io/utils/trace package.
+// Incoming context is not required to contain span parameters
+func StartNewRootSpan(ctx context.Context, tp trace.TracerProvider, name string, attributes ...attribute.KeyValue) (context.Context, *Span) {
+	// If the caller is not using OpenTelemetry, or has tracing disabled (e.g. with a component-specific feature flag), this is a noop.
+	ctx, otelSpan := tp.Tracer(instrumentationScope).Start(ctx, name, trace.WithAttributes(attributes...))
+	// If there is already a utiltrace span in the context, use that as our parent span.
+	utilSpan := utiltrace.New(name, attributesToFields(attributes)...)
+	// Set the trace as active in the context so that subsequent Start calls create nested spans.
+	return utiltrace.ContextWithTrace(ctx, utilSpan), &Span{
+		otelSpan: otelSpan,
+		utilSpan: utilSpan,
+	}
+}
+
 // Span is a component part of a trace. It represents a single named
 // and timed operation of a workflow being observed.
 // This Span is a combination of an OpenTelemetry and k8s.io/utils/trace span
